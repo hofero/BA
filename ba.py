@@ -1,54 +1,89 @@
-#from Scientific.IO import NetCDF
-#import Scientific.IO.NetCDF
+import netcdf_helpers
+from optparse import OptionParser
 import sys
+from PIL import Image
 from numpy import *
-from Scientific.IO.NetCDF import NetCDFFile
+import re
 
-#variables
-input = []
-temp = []
+inputMean = 0
+inputStd = 1
 
+#command line options
+parser = OptionParser()
 
-#open file
-try:
-    file = open(sys.argv[1],"r")
-except Exception, e:
-    print"Fehler beim oeffnen der Datei"
-    sys.exit()
+#parse command line options
+(options, args) = parser.parse_args()
+if (len(args)<2):
+    print "usage: -options input_filename output_filename"
+    print options
+    sys.exit(2)
 
-#load file into a list
-for line in file:
-    input.append(line)
+#labels = noten?
+labels = [str(x).rjust(2,"0")for x in range(1,89)]
 
-#extract time and frequency from list
-for i in input:
-    temp = eval(i)
+inputFilename = args[0]
+outputFilename = args[1]
+print options
+print "input filename", inputFilename
+print "output filename", outputFilename
 
-#get dimensions
-timeDimension = len(temp)
-frequencyDimension = len(temp[0])
+#read in input files
+filenames = file(inputFilename).readlines()
+seqTags = []
+seqDims = []
+targesStrings = []
+seqLengths = []
+for f in filenames:
+    fname = f.strip()
+    if len(fname):
+        try:
+            print "reading image dimensions", fname
+            image = Image.open(fname)
+            dims = (image.size[1], image.size[0])
+            label = fname.split(".")[0]
+            targetStrings.append(label)
+            seqLength.append(dims[0] * dims[1])
+            seqTags.append(fname)
+            seqDims.append(dims)
+            print image.size
 
-#open a netCDF file
-file = NetCDFFile("NetCDF.cdf","w")
+        except:
+            print "could not open image"
+            filenames.remove(f)
+    else:
+        filenames.remove(f)
 
-#create the netCDF dimensions
-file.createDimension("time", timeDimension)
-#file.createDimension("time", None)
-file.createDimension("frequency", frequencyDimension)
+#inputs array
+totalLen = sum(seqLengths)
+print "tottalLen", totalLen
+inputs = zeros((totalLen,1), "f")
+offset = 0
 
-#create the netCDF variable
-dataDims = ("time", "frequency")
-data = file.createVariable("data", "d", dataDims)
+for filename in seqTags:
+    print "reading image file", filename
+    image = Image.open(filename).transpose(Image.FLIP_TOP_BOTTOM).transpose(Image.ROTATE_270)
+    for i in image.getdata():
+        inputs[offset][0]= (float(i)-inputMean)/inputStd
+        offset += 1
 
-#get size of variable
-dataShape = data.shape
+#create a new .nc file
+file = netcdf_helpers.NetCDFFile(outputFilename, "w")
 
-#put data in variable
-for i in range(dataShape[0]):
-    for j in range(dataShape[1]):
-        data[i,j] = temp[i][j]
+#create the dimensions
+netcdf_helpers.createNcDim(file, "numSeqs", len(seqLength))
+netcdf_helpers.createNcDim(file,"numTimesteps", len(inputs))
+netcdf_helpers.createNcDim(file, "inputPattSize", len(inputs[0]))
+netcdf_helpers.createNcDim(file,"numDims", 2)
+netcdf_helpers.createNcDim(file,"numLabels", len(labels))
 
+#create the variables
+netcdf_helpers.createNcStrings(file, "seqTags", seqTags, ("numSeqs", "maxSeqTagLength"), "sequence tags")
+netcdf_helpers.createNcStrings(file, "labels", labels, ("numLabels", "maxLabelLength"), "labels")
+netcdf_helpers.createNcStrings(file, "targetStrings", targetStrings, ("numSeqs", "maxTargetStringLength"), "target strings")
+netcdf_helpers.createNcVar(file, "seqLengths", seqLengths, "i", ("numseqs"), "sequence lengths")
+netcdf_helpers.createNcVar(file, "seqDims", seqDims, "i", ("numseqs","numDims"), "sequence dimensions")
+netcdf_helpers.createNcVar(file, "inputs", inputs, "f", ("numTimesteps","inputPattSize"), "input patterns")
 
-#close a netCDF file
+#write the data to disk
+print "writin data to", outputFilename
 file.close()
-
