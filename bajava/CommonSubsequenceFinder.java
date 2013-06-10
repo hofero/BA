@@ -66,11 +66,6 @@ public class CommonSubsequenceFinder {
         public boolean equal(Integer a, Integer b);
     }
 
-    public static enum AlignmentDirection {
-        LEFT_TO_RIGHT,
-        RIGHT_TO_LEFT
-    }
-
     public void setPenalty(double p) {
         penalty = p;
     }

@@ -1,10 +1,8 @@
-
 package bajava;
 
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.*;
 import com.google.common.io.Files;
-import com.google.common.primitives.Shorts;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
@@ -12,14 +10,11 @@ import java.io.*;
 import java.lang.reflect.Type;
 import java.nio.charset.Charset;
 import java.util.*;
-import java.util.zip.GZIPOutputStream;
 
 public class TrainingDatasetCreator {
 
-
     private static String MIDI_DATA_ROOT = "";
     private static String OUTPUT_PATH = "";
-
     private static Map<String, String> audioCQTPaths;
 
     public static void main(String[] args) {
@@ -51,7 +46,7 @@ public class TrainingDatasetCreator {
         audioCQTPaths = getAudioCQTPaths(MIDI_DATA_ROOT + "/cqt");
         //audioCQTPaths: {0GZXD2SuR2w=/home/olivia/Dokumente/Bachelorarbeit/Daten/Test/cqt/0GZXD2SuR2w.aac_44100-16040-335.dat.gz, 0RYhyrWsqv4=/home/olivia/Dokumente/Bachelorarbeit/Daten/Test/cqt/0RYhyrWsqv4.aac_44100-67980-335.dat.gz}
 
-        Multimap<Long, Multiset<Long>> stats = HashMultimap.create();
+        List<TrainingInstance> pairs = new ArrayList<TrainingInstance>();
 
         int prevStatsSize = 10000;
         int filterLevel = 3;
@@ -74,26 +69,20 @@ public class TrainingDatasetCreator {
                 //Fuer jede Zuordnung ein globalAlignment erstellen
                 GlobalAlignment globalAlignment = new Gson().fromJson(jsonString, GlobalAlignment.class);
                 //[1 local alignments, 1022 points, minConfidence ]
-                Multimap<Long, Multiset<Long>> localStats = getStatsForGlobalAlignment(globalAlignment);
 
-                //Zu seltene Noten entfernen
-                localStats = filter(localStats, 3);
-                //localStats zu stats hinzu
-                accumulateStats(stats, localStats);
+                List<TrainingInstance> localPairs = getTrainingInstanceList(globalAlignment);
+                //alle TrainingPairs in einem Array speichern
+                accumulatePairs(pairs, localPairs);
 
-                if (stats.size() > prevStatsSize * 2) {
+                if (pairs.size() > prevStatsSize * 2) {
                     try {
                         filterLevel += 1;
-                        stats = filter(stats, filterLevel);
-                        String outName = OUTPUT_PATH + "/audioMidiStats-" + stats.size() + ".obj";
-                        System.out.println("storing stats in " + outName);
                         Stopwatch sw = new Stopwatch();
                         sw.start();
-                        saveStats(stats, outName);
                         System.out.println("done in " + sw);
                         sw.stop();
-                        prevStatsSize = stats.size();
-                    } catch (IOException e) {
+                        prevStatsSize = pairs.size();
+                    } catch (Exception e) {
                         e.printStackTrace();
                     }
                 }
@@ -104,11 +93,10 @@ public class TrainingDatasetCreator {
         try {
             Stopwatch sw = new Stopwatch();
             sw.start();
-            stats = filter(stats, 3);
             System.out.println(sw);
             sw.reset();
             sw.start();
-            saveStats(stats, OUTPUT_PATH + "/audioMidiStats.obj");
+            saveTrainingInstance(pairs, OUTPUT_PATH);
             System.out.println(sw);
             sw.reset();
             sw.start();
@@ -117,61 +105,60 @@ public class TrainingDatasetCreator {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        printStats(stats);
     }
 
-    private static void accumulateStats(Multimap<Long, Multiset<Long>> stats, Multimap<Long, Multiset<Long>> localStats) {
-        for (long peakSignature : localStats.keySet()) {
-            if (!stats.containsKey(peakSignature)) {
-                stats.putAll(peakSignature, localStats.get(peakSignature));
-            } else {
-                for (Multiset<Long> activeNoteSignatures : localStats.get(peakSignature)) {
-                    assert (activeNoteSignatures.size() == 1);
+    //Alle Paare in einem Array speichern
+    private static void accumulatePairs(List<TrainingInstance> pairs, List<TrainingInstance> localPairs) {
+        for (TrainingInstance ti : localPairs) {
+            pairs.add(ti);
+        }
+    }
 
-                    Long activeNoteSignature = activeNoteSignatures.iterator().next();
-                    int count = activeNoteSignatures.count(activeNoteSignature);
+    //Jedes Trainingspaar in Json Datei speichern
+    public static void saveTrainingInstance(List<TrainingInstance> pairs, String path) throws IOException {
 
-                    boolean got = false;
-                    for (Multiset<Long> msl : stats.get(peakSignature)) {
-                        if (msl.contains(activeNoteSignature)) {
-                            msl.add(activeNoteSignature, count);
-                            got = true;
-                        }
-                    }
-                    if (!got) {
-                        Multiset<Long> ms = TreeMultiset.create();
-                        ms.add(activeNoteSignature, count);
-                        stats.put(peakSignature, ms);
-                    }
+        Gson gson = new Gson();
+        Type tiType = new TypeToken<TrainingInstance>() {
+        }.getType();
+        //Neuen Dateinamen in filenames.txt (Auflistung aller Dateien) speichern
+        FileWriter fw = new FileWriter(path + "/filenames.txt");
+
+        for (TrainingInstance pair : pairs) {
+            try {
+                int[] nts = pair.getNotes();
+                Integer[] ntsInteger = new Integer[nts.length];
+                for (int i = 0; i < nts.length; i++) {
+                    ntsInteger[i] = new Integer(nts[i]);
                 }
+                long[] notespacked = new long[((nts.length / 9) + 1)];
+                for (int n = 0; n < nts.length; n = n + 9) {
+                    long ntspacked = 0;
+                    if (n + 9 >= nts.length) {
+                        ntspacked = NgramCoder.pack(Arrays.copyOfRange(ntsInteger, n, nts.length));
+                    } else {
+                        ntspacked = NgramCoder.pack(Arrays.copyOfRange(ntsInteger, n, n + 9));
+                    }
+                    notespacked[n / 9] = ntspacked;
+                }
+                String p = String.valueOf(notespacked[0] + ".json");
+                fw.write("out/" + p + "\n");
+                
+                //JsonDatei Anlegen
+                FileWriter writer = new FileWriter(path + "/out/" + p);
+                gson.toJson(pair, tiType, writer);
+                writer.close();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
+        fw.close();
+
     }
 
-    private static Multimap<Long, Multiset<Long>> filter(Multimap<Long, Multiset<Long>> stats, int minCount) {
-        Multimap<Long, Multiset<Long>> out = HashMultimap.create(stats);
-        for (long l : stats.keySet()) {
-            Collection<Multiset<Long>> coll = stats.get(l);
-            for (Multiset<Long> m : coll) {
-                if (m.size() < minCount) out.remove(l, m);
-            }
-        }
-        return out;
-    }
+    //Die GlobalAlignments in kleinere Abschnitte Zerlegen und jeden Abschnitt als Trainingspaar abspeichern
+    public static List<TrainingInstance> getTrainingInstanceList(GlobalAlignment globalAlignment) {
 
-    public static void saveStats(Multimap<Long, Multiset<Long>> stats, String path) throws IOException {
-        FileOutputStream fos = new FileOutputStream(path);
-        GZIPOutputStream gz = new GZIPOutputStream(fos);
-        ObjectOutputStream oos = new ObjectOutputStream(gz);
-        oos.writeObject(stats);
-        oos.flush();
-        oos.close();
-    }
-
-
-    public static Multimap<Long, Multiset<Long>> getStatsForGlobalAlignment(GlobalAlignment globalAlignment) {
-
+        List<TrainingInstance> pairs = new ArrayList<TrainingInstance>();
         Multimap<Long, Multiset<Long>> stats = HashMultimap.create();
 
         //Midi Datei: kdf^albeniz^albeniz_mallorca_(c)yogore.mid
@@ -185,7 +172,9 @@ public class TrainingDatasetCreator {
         //Pfad zu Audio Datei
         String audioDataPath = audioCQTPaths.get(uri1);
 
-        if (audioDataPath == null) return stats;
+        if (audioDataPath == null) {
+            return pairs;
+        }
 
         //Abtastrate Spektrogramme
         int sampleRate = getSampleRate(audioDataPath);
@@ -201,7 +190,7 @@ public class TrainingDatasetCreator {
         } catch (Exception e) {
             System.out.println("problem loading " + audioDataPath);
             e.printStackTrace();
-            return stats;
+            return pairs;
         }
 
         MidiDatabaseHelper mdh = new MidiDatabaseHelper(MIDI_DATA_ROOT, OUTPUT_PATH);
@@ -218,7 +207,7 @@ public class TrainingDatasetCreator {
         System.out.println(audioData.length + " " + sc0.size());
 
         //Die TimeMaps des globalAlignment durchlaufen und in Abschnitte (30 lang) unterteilen --> in Map umwandeln
-        //Zuerst in ga: {...localtimeMaps:[[timeMap--> wird zu Key][timeMap--> wird zu Value],...]}
+        //Zuerst in ga: {...localtimeMaps:[[timeMap[0]--> wird zu Key][timeMap[1]--> wird zu Value],...]}
         //Key = Zeit, Value = ...
         int matchLength = 30;
         Map<double[], double[]> ranges = getRanges(globalAlignment, matchLength);
@@ -248,16 +237,19 @@ public class TrainingDatasetCreator {
         cs.setPenalty(0.2);
         cs.setMatchingPolicy(CommonSubsequenceFinder.MatchingPolicy.UPPER_SEMITONE);
 
-        List<TrainingInstance> pairs = new ArrayList<TrainingInstance>();
 
         for (double[] rLeft : ranges.keySet()) {
             double[] rRight = ranges.get(rLeft);
 
             //Noten und Frames
             int[] nts = notes.get(rLeft);
+
             double[][] transform = transforms.get(rRight);
 
-            if (transform == null) continue;
+
+            if (transform == null) {
+                continue;
+            }
 
             //Frames verkleinern
             double[][] f = PolyphonicPitchEstimator.removeLoudBackground(transform);
@@ -266,74 +258,17 @@ public class TrainingDatasetCreator {
             TrainingInstance ti = new TrainingInstance(nts, transform);
             pairs.add(ti);
 
-            //MIDI daten holen
-            StreamsContainer sc00 = sc0.getMIDISubsequenceFromTimeRange(
-                    Range.closed(rLeft[0], rLeft[rLeft.length - 1])
-            );
-            //times Array Zahlen verkleinern
-            sc00.trimTime();
-            //
-            sc00.computeOnsetsOffsets();
 
             double transformStep = 1d / ComputeCQT.TARGET_FRAME_RATE * 256;
-
-            //Frames durchlaufen
-            int frame = 0;
-            for (int n = 0; n < rRight.length - 1; n++) {
-                double start = rRight[n];
-                double stop = rRight[n + 1];
-                for (double t = start; t < stop; t += transformStep) {
-                    //Klingende Noten aus Frame herausfinden und in activeNoteSignature kodiert abspeichern
-                    double tLeft = rLeft[n] + (t - start) * (rLeft[n + 1] - rLeft[n]) / (rRight[n + 1] - rRight[n]);
-                    Set<Integer> activeNotes = sc00.getActiveNotes(tLeft - rLeft[0]);
-                    Long activeNoteSignature = NgramCoder.pack(activeNotes.toArray(new Integer[]{}));
-                    //System.out.println("notes at " + (tLeft - rLeft[0]) + ": " + activeNotes + " "+ activeNoteSignature);
-                    if (frame < transform.length) {
-                        double[] frameData = f[frame];
-                        //selbtenste peaks auswaehlen und sortieren
-                        List<Integer> peaks = sortPeaks(frameData);
-                        //Peaks als long kodiert in peakSignature speichern
-                        //zu stats (Keyset) hinzufuegen falls noch nicht vorhanden
-                        //aktiveNoteSignature zu dem passenden Valueset hinzu
-                        for (int k = 0; k < 10; k++) {
-                            long peakSignature = NgramCoder.pack(peaks.subList(0, k).toArray(new Integer[]{}));
-                            if (!stats.containsKey(peakSignature)) {
-                                Multiset<Long> ms = TreeMultiset.create();
-                                ms.add(activeNoteSignature);
-                                stats.put(peakSignature, ms);
-                            } else {
-                                boolean got = false;
-                                for (Multiset<Long> msl : stats.get(peakSignature)) {
-                                    if (msl.contains(activeNoteSignature)) {
-                                        msl.add(activeNoteSignature);
-                                        got = true;
-                                    }
-                                }
-                                if (!got) {
-                                    Multiset<Long> ms = TreeMultiset.create();
-                                    ms.add(activeNoteSignature);
-                                    stats.put(peakSignature, ms);
-                                }
-                            }
-                        }
-
-                        //System.out.println("peaks: " + peaks);
-                    } else {
-                        //System.out.println("frame " + frame + " out of " + transform.length);
-                    }
-
-                    frame++;
-                }
-            }
 
         }
 
         System.out.println("created " + pairs.size() + " training pairs");
 
-
-        return stats;
+        return pairs;
     }
 
+    //Abtastrate
     private static int getSampleRate(String audioDataPath) {
         int p = audioDataPath.lastIndexOf("_") + 1;
         return Integer.parseInt(audioDataPath.substring(p, p + 5));
@@ -343,53 +278,12 @@ public class TrainingDatasetCreator {
     private static Map<String, String> getAudioCQTPaths(String root) {
         Map<String, String> out = new HashMap<String, String>();
         for (File f : new File(root).listFiles()) {
-            if (f.getName().length() < 11 || !f.getName().endsWith("dat.gz")) continue;
+            if (f.getName().length() < 11 || !f.getName().endsWith("dat.gz")) {
+                continue;
+            }
             out.put(f.getName().substring(0, 11), f.getAbsolutePath());
         }
         return out;
-    }
-
-    private static void printStats(Multimap<Long, Multiset<Long>> stats) {
-        for (long l : Sets.newTreeSet(stats.keySet())) {
-            List<Short> s = Shorts.asList(NgramCoder.unpack(l));
-            boolean show = s.size() < 10;
-            if (show) {
-                String d = toString(stats.get(l));
-                if (!d.isEmpty()) {
-                    System.out.println(s + ": " + d);                   
-                }
-            }
-        }
-    }
-
-    private static String toString(Collection<Multiset<Long>> chordCounts) {
-        StringBuilder sb = new StringBuilder();
-        for (Multiset<Long> ml : chordCounts) {
-            for (Long l : Multisets.copyHighestCountFirst(ml).elementSet()) {
-                List<Short> li = Shorts.asList(NgramCoder.unpack(l));
-                if (ml.count(l) < 10) continue;
-                sb.append("[").append(li).append(" x ").append(ml.count(l)).append("], ");
-            }
-        }
-        sb.delete(Math.max(0, sb.length() - 2), sb.length());
-        return sb.toString();
-    }
-
-    public static List<Integer> sortPeaks(double[] frameData) {
-        List<Integer> peaks;
-        //Ordnet Peaks nach Haeufigkeit --> map < peak,indices>
-        //In frameData 90x-127.0(haeufigstes) --> dann map[0]=127.0 und map.values() von 0 bis 90 die Stellen an denen 127.0 steht
-        Multimap<Double, Integer> map = TreeMultimap.create();
-        for (int i = 0; i < frameData.length; ++i) {
-            map.put(frameData[i], i);
-        }
-        Collection<Integer> indices = map.values();
-        //30 seltenste auswaehlen und normalisieren
-        peaks = Lists.reverse(Lists.newArrayList(indices).subList(indices.size() - 30, indices.size()));
-        for (int i = 0; i < peaks.size(); i++) {
-            peaks.set(i, (peaks.get(i) / 4 + 40));
-        }
-        return peaks;
     }
 
     //TimeMaps durchlaufen und jede timeMap in kleinere Abschnitte --> in Map umwandeln: timeMap[0] wird zu key, timeMap[1] zu value
@@ -407,11 +301,11 @@ public class TrainingDatasetCreator {
                 double r1 = right[Math.min(i + matchLength, right.length - 1)];
                 double[] key = Arrays.copyOfRange(left, i, Math.min(i + matchLength, left.length - 1));
                 double[] val = Arrays.copyOfRange(right, i, Math.min(i + matchLength, right.length - 1));
-                if (key.length > 0 && val.length > 0)
+                if (key.length > 0 && val.length > 0) {
                     ranges.put(key, val);
+                }
             }
         }
         return ranges;
     }
-
 }
