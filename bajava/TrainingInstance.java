@@ -3,19 +3,20 @@ package bajava;
 
 public class TrainingInstance implements java.io.Serializable {
 
-//    private long[] notes;
     private int[] notes;
     private double[][] transform;
+    private String uri;
+    private double starttime;
+    private double endtime;
 
-//    TrainingInstance(long[] notes, double[][] transform) {
-    TrainingInstance(int[] notes, double[][] transform) {
+    TrainingInstance(int[] notes, double[][] transform, String uri, double starttime, double endtime) {
         this.notes = notes;
         this.transform = transform;
+        this.uri = uri;
+        this.starttime = starttime;
+        this.endtime = endtime;
     }
 
-//    public long[] getNotes() {
-//        return notes;
-//    }
     public int[] getNotes() {
         return notes;
     }
@@ -24,4 +25,15 @@ public class TrainingInstance implements java.io.Serializable {
         return transform;
     }
 
+    public String getUri() {
+        return uri;
+    }
+
+    public double getStarttime() {
+        return starttime;
+    }
+
+    public double getEndtime() {
+        return endtime;
+    }
 }

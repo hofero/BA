@@ -1,7 +1,8 @@
 import json
 import sys
+from PIL import Image
 
-from Scientific.Functions.Polynomial import zeros
+from Scientific.Functions.Polynomial import *
 import netcdf_helpers
 from numpy import *
 from optparse import OptionParser
@@ -56,19 +57,38 @@ for f in filenames:
     else:
         data.remove(f)
 
-#inputs array
+#inputs array mit jedem wert einzeln
 totalLen = sum(seqLengths)
 print "tottalLen", totalLen
 inputs = zeros((totalLen,1), "f")
 offset = 0
 
-#for filename in seqTags:
-#    print "reading image file", filename
-#    image = Image.open(filename).transpose(Image.FLIP_TOP_BOTTOM).transpose(Image.ROTATE_270)
-#    for i in image.getdata():
-#        inputs[offset][0]= (float(i)-inputMean)/inputStd
+##inputs array frameweise
+#totalLen = sum(dim[0] for dim in seqDims)
+#print "tottalLen", totalLen
+#inputs = zeros((totalLen,seqDims[0][1]),"f")
+#offset = 0
+
+
+for filename in seqTags:
+    print "reading file", filename
+    transform = data["transform"]
+    json_data = open(inputFilename + "/"+filename)
+    data = json.load(json_data)
+    transform = data["transform"]
+
+#inputs array mit einzelnen werten fuellen
+    for frame in transform:
+        for i in frame:
+            inputs[offset][0]= (float(i)-inputMean)/inputStd
+            offset += 1
+
+##inputs array frameweise fuellen
+#    for frame in transform:
+#        inputs[offset]= frame
 #        offset += 1
-#
+
+
 #create a new .nc file
 file = netcdf_helpers.NetCDFFile(outputFilename, "w")
 

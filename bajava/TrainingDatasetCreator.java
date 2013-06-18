@@ -69,6 +69,7 @@ public class TrainingDatasetCreator {
                 //Fuer jede Zuordnung ein globalAlignment erstellen
                 GlobalAlignment globalAlignment = new Gson().fromJson(jsonString, GlobalAlignment.class);
                 //[1 local alignments, 1022 points, minConfidence ]
+                System.out.print(globalAlignment.toString());
 
                 List<TrainingInstance> localPairs = getTrainingInstanceList(globalAlignment);
                 //alle TrainingPairs in einem Array speichern
@@ -125,24 +126,9 @@ public class TrainingDatasetCreator {
 
         for (TrainingInstance pair : pairs) {
             try {
-                int[] nts = pair.getNotes();
-                Integer[] ntsInteger = new Integer[nts.length];
-                for (int i = 0; i < nts.length; i++) {
-                    ntsInteger[i] = new Integer(nts[i]);
-                }
-                long[] notespacked = new long[((nts.length / 9) + 1)];
-                for (int n = 0; n < nts.length; n = n + 9) {
-                    long ntspacked = 0;
-                    if (n + 9 >= nts.length) {
-                        ntspacked = NgramCoder.pack(Arrays.copyOfRange(ntsInteger, n, nts.length));
-                    } else {
-                        ntspacked = NgramCoder.pack(Arrays.copyOfRange(ntsInteger, n, n + 9));
-                    }
-                    notespacked[n / 9] = ntspacked;
-                }
-                String p = String.valueOf(notespacked[0] + ".json");
+                String p = pair.getUri() + "_" + pair.getStarttime() + "-" + pair.getEndtime() + ".json";
                 fw.write("out/" + p + "\n");
-                
+
                 //JsonDatei Anlegen
                 FileWriter writer = new FileWriter(path + "/out/" + p);
                 gson.toJson(pair, tiType, writer);
@@ -254,8 +240,14 @@ public class TrainingDatasetCreator {
             //Frames verkleinern
             double[][] f = PolyphonicPitchEstimator.removeLoudBackground(transform);
 
+            //Start- und Endzeit des Abschnitts herausfinden
+            StreamsContainer sc00 = sc0.getMIDISubsequenceFromTimeRange(Range.closed(rLeft[0], rLeft[rLeft.length -1]));
+
+            double starttime = sc00.getLinearizedTimes()[0];
+            double endtime = sc00.getLinearizedTimes()[sc00.getLinearizedTimes().length-1];
+
             //Trainingsinstanz anlegen
-            TrainingInstance ti = new TrainingInstance(nts, transform);
+            TrainingInstance ti = new TrainingInstance(nts, transform, uri0, starttime, endtime);
             pairs.add(ti);
 
 

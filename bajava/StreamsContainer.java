@@ -140,6 +140,7 @@ public class StreamsContainer implements Serializable {
         return out;
     }
 
+
     public StreamsContainer getMIDISubsequenceFromTimeRange(Range range) {
         return getMIDISubsequenceTimeRange(range, true);
     }
@@ -197,109 +198,6 @@ public class StreamsContainer implements Serializable {
             times.set(i, times.get(i) - startTime);
         }
         return this;
-    }
-
-    public void computeOnsetsOffsets() {
-        onsets = onsets();
-        offsets = offsets();
-//        System.out.println("pitches:");
-//        for(short i : pitches.toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("volumes:");
-//        for(short i : volumes.toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("ticks:");
-//        for(long i : ticks.toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("times:");
-//        for(double i : times.toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("streamIDs:");
-//        for(int i : streamIds.toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("types:");
-//        for(short i : types.toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("pedals:");
-//        for(short i : pedals.toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("linearizedToOrig:");
-//        for(int i : linearizedToOrig.toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("linearizedList:");
-//        for(int i : linearizedList.toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("streamOffsets keySet:");
-//        for(int i : streamOffsets.keySet().toArray()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("streamOffsets values:");
-//        for(int i : streamOffsets.values()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("streamTitles keySet:");
-//        for(int i : streamTitles.keySet()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("streamTitles values:");
-//        for(String i : streamTitles.values()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("onsets values:");
-//        for(int i : onsets.keySet()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("onsets values:");
-//        for(double i : onsets.values()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("offsets values:");
-//        for(int i : offsets.keySet()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("offsets values:");
-//        for(double i : offsets.values()){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-//        System.out.println("linearized:");
-//        for(int i : linearized){
-//            System.out.print(i + " ");
-//        }System.out.println(" \n");
-    }
-
-    TreeMultimap<Integer, Double> onsets() {
-        TreeMultimap<Integer, Double> out = TreeMultimap.create();
-        for (int i = 0; i < pitches.size(); i++) {
-            short volume = volumes.get(i);
-            short type = types.get(i);
-            if (volume == 0 || type != 144) continue;
-            int pitch = pitches.get(i);
-            double t = times.get(i);
-            out.put(pitch, t);
-        }
-        return out;
-    }
-
-    TreeMultimap<Integer, Double> offsets() {
-        TreeMultimap<Integer, Double> out = TreeMultimap.create();
-        for (int i = 0; i < pitches.size(); i++) {
-            short volume = volumes.get(i);
-            short type = types.get(i);
-            if (volume > 0 || type != 144) continue;
-            int pitch = pitches.get(i);
-            double t = times.get(i);
-            out.put(pitch, t);
-        }
-        return out;
     }
 
     public int[] getLinearized(Range<Double> timeRange) {
