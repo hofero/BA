@@ -1,7 +1,8 @@
+import itertools
 import json
 import sys
-from PIL import Image
 
+from PIL import Image
 from Scientific.Functions.Polynomial import *
 import netcdf_helpers
 from numpy import *
@@ -16,13 +17,23 @@ parser = OptionParser()
 
 #parse command line options
 (options, args) = parser.parse_args()
-if (len(args)<2):
+if (len(args) < 2):
     print "usage: -options input_filename output_filename"
     print options
     sys.exit(2)
 
 #labels = noten
-labels = [str(x).rjust(2,"0")for x in range(1,89)]
+labels = []
+def is_label(notes):
+    x = False
+    for note in notes:
+        if note in range(30, 91):
+            x = True
+            continue
+        else:
+            x = False
+            break
+    return x
 
 
 inputFilename = args[0]
@@ -42,32 +53,36 @@ for f in filenames:
     if len(fname):
         try:
             print "reading image dimensions", fname
-            json_data = open(inputFilename + "/"+fname)
+            json_data = open(inputFilename + "/" + fname)
             data = json.load(json_data)
             transform = data["transform"]
             dims = (len(transform), len(transform[0]))
             label = data["notes"]
-            targetStrings.append(label)
+            if(is_label(label)):
+                labels.append(label)
+                targetStrings.append(label)
             seqLengths.append(dims[0] * dims[1])
             seqTags.append(fname)
             seqDims.append(dims)
         except:
             print "could not open image"
-            data.remove(f)
+#            data.remove(f)
     else:
-        data.remove(f)
+        print "error"
+#        data.remove(f)
 
-#inputs array mit jedem wert einzeln
-totalLen = sum(seqLengths)
-print "tottalLen", totalLen
-inputs = zeros((totalLen,1), "f")
-offset = 0
 
-##inputs array frameweise
-#totalLen = sum(dim[0] for dim in seqDims)
+##inputs array mit jedem wert einzeln
+#totalLen = sum(seqLengths)
 #print "tottalLen", totalLen
-#inputs = zeros((totalLen,seqDims[0][1]),"f")
+#inputs = zeros((totalLen,1), "f")
 #offset = 0
+
+#inputs array frameweise
+totalLen = sum(dim[0] for dim in seqDims)
+print "tottalLen", totalLen
+inputs = zeros((totalLen,seqDims[0][1]),"f")
+offset = 0
 
 
 for filename in seqTags:
@@ -77,16 +92,17 @@ for filename in seqTags:
     data = json.load(json_data)
     transform = data["transform"]
 
-#inputs array mit einzelnen werten fuellen
-    for frame in transform:
-        for i in frame:
-            inputs[offset][0]= (float(i)-inputMean)/inputStd
-            offset += 1
-
-##inputs array frameweise fuellen
+##inputs array mit einzelnen werten fuellen
 #    for frame in transform:
-#        inputs[offset]= frame
-#        offset += 1
+#        for i in frame:
+#            inputs[offset][0]= (float(i)-inputMean)/inputStd
+#            offset += 1
+
+
+#inputs array frameweise fuellen
+    for frame in transform:
+        inputs[offset]= frame
+        offset += 1
 
 
 #create a new .nc file
@@ -110,4 +126,6 @@ netcdf_helpers.createNcVar(file, "inputs", inputs, "f", ("numTimesteps","inputPa
 #write the data to disk
 print "writing data to", outputFilename
 json_data.close()
+
+
 
