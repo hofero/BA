@@ -195,7 +195,7 @@ public class TrainingDatasetCreator {
         //Die TimeMaps des globalAlignment durchlaufen und in Abschnitte (30 lang) unterteilen --> in Map umwandeln
         //Zuerst in ga: {...localtimeMaps:[[timeMap[0]--> wird zu Key][timeMap[1]--> wird zu Value],...]}
         //Key = Zeit, Value = ...
-        int matchLength = 30;
+        int matchLength = 2;
         Map<double[], double[]> ranges = getRanges(globalAlignment, matchLength);
 
 
@@ -229,12 +229,19 @@ public class TrainingDatasetCreator {
 
             //Noten und Frames
             int[] nts = notes.get(rLeft);
+            if (nts.length == 0){
+                continue;
+            }
 
             double[][] transform = transforms.get(rRight);
 
-
             if (transform == null) {
                 continue;
+            }
+
+            for (int i=0; i<transform.length; i++){
+                double[] peaks = sortPeaks(transform[i]);
+                 transform[i]= peaks;
             }
 
             //Frames verkleinern
@@ -299,5 +306,28 @@ public class TrainingDatasetCreator {
             }
         }
         return ranges;
+    }
+
+    public static double[] sortPeaks(double[] frameData) {
+        List<Integer> peaks;
+        //Ordnet Peaks aufsteigend nach Groesse --> map < peak,indices>
+        Multimap<Double, Integer> map = TreeMultimap.create();
+        for (int i = 0; i < frameData.length; ++i) {
+            map.put(frameData[i], i);
+        }
+        Collection<Integer> indices = map.values();
+        //10 hoechste auswaehlen
+        if(indices.size()>10){
+            peaks = Lists.reverse(Lists.newArrayList(indices).subList(indices.size() - 10, indices.size()));
+        }
+        else{
+            peaks = Lists.reverse(Lists.newArrayList(indices));
+        }
+        double[] result = new double[peaks.size()];
+        for (int i = 0; i < peaks.size(); i++) {
+            result[i]= peaks.get(i);
+        }
+
+        return result;
     }
 }
