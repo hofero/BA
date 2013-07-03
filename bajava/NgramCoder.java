@@ -22,5 +22,13 @@ public class NgramCoder {
         }
         return Arrays.copyOfRange(a, 0,nonNullIndex +1);
     }
-    
+    public static void main(String[] args) {
+        long l = NgramCoder.pack(new Integer[]{90});
+        short[] u = NgramCoder.unpack(4323455642275676160L);
+        for (short s: u){
+
+        System.out.println(s + " ");
+        }
+    }
+
 }

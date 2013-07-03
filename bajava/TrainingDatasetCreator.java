@@ -5,6 +5,7 @@ import com.google.common.collect.*;
 import com.google.common.io.Files;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import gnu.trove.list.array.TDoubleArrayList;
 
 import java.io.*;
 import java.lang.reflect.Type;
@@ -181,10 +182,13 @@ public class TrainingDatasetCreator {
 
         MidiDatabaseHelper mdh = new MidiDatabaseHelper(MIDI_DATA_ROOT, OUTPUT_PATH);
         StreamsContainer sc0 = new StreamsContainer();
+        ImmutableMultimap<Double, Long> midiparser = null;
         try {
             String realUri0 = uri0.substring(4).replace("^", "/");
             //Midi Datei laden und in StreamsContainer speichern
             sc0 = mdh.loadKDF(realUri0);
+            File f = new File(MIDI_DATA_ROOT + "/kdf/"+realUri0);
+            midiparser = MIDIParser.parseChords(Files.toByteArray(f));
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -195,17 +199,37 @@ public class TrainingDatasetCreator {
         //Die TimeMaps des globalAlignment durchlaufen und in Abschnitte (30 lang) unterteilen --> in Map umwandeln
         //Zuerst in ga: {...localtimeMaps:[[timeMap[0]--> wird zu Key][timeMap[1]--> wird zu Value],...]}
         //Key = Zeit, Value = ...
-        int matchLength = 2;
+        int matchLength = 30;
         Map<double[], double[]> ranges = getRanges(globalAlignment, matchLength);
 
 
         //Intervallen aus ranges.keySet()(bleibt Key) die gespielten Noten (value) zuordnen --> Noten
-        Map<double[], int[]> notes = new HashMap<double[], int[]>();
-        for (double[] r : ranges.keySet()) {
-            Range ra = Range.closed(r[0], r[r.length - 1]);
-            int[] linearized = sc0.getLinearized(ra);
-            notes.put(r, linearized);
+//        Map<double[], int[]> notes = new HashMap<double[], int[]>();
+//        for (double[] r : ranges.keySet()) {
+//            Range ra = Range.closed(r[0], r[r.length - 1]);
+//            int[] linearized = sc0.getLinearized(ra);
+//            notes.put(r, linearized);
+//        }
+
+        Double[] midiparserDoubleArray = midiparser.keys().toArray(new Double[midiparser.size()]);
+        TDoubleArrayList midiparserArrayList = new TDoubleArrayList();
+        for (int i = 0; i< midiparserDoubleArray.length; i++){
+            midiparserArrayList.add(midiparserDoubleArray[i]);
         }
+        Long[] midiparserLongArray = midiparser.values().toArray(new Long[midiparser.size()]);
+        long[] mpla = new long[midiparserLongArray.length];
+        for (int i = 0; i< midiparserLongArray.length; i++){
+            mpla[i]= midiparserLongArray[i];
+        }
+        Map<double[], long[]> chords = new HashMap<double[], long[]>();
+        for(double[] r: ranges.keySet()){
+            Range ra = Range.closed(r[0], r[r.length -1]);
+            int startIdx =  midiparserArrayList.binarySearch((Double) ra.lowerEndpoint());
+            int stopIdx =   midiparserArrayList.binarySearch((Double) ra.upperEndpoint());
+            long[] chordsInRange = Arrays.copyOfRange(mpla,startIdx,stopIdx);
+            chords.put(r, chordsInRange);
+        }
+
 
         //Intervallen aus ranges.values() (wird key ) Daten aus Spektrogramm (value) zuordnen --> Frames
         Map<double[], double[][]> transforms = new HashMap<double[], double[][]>();
@@ -228,8 +252,13 @@ public class TrainingDatasetCreator {
             double[] rRight = ranges.get(rLeft);
 
             //Noten und Frames
-            int[] nts = notes.get(rLeft);
-            if (nts.length == 0){
+//            int[] nts = notes.get(rLeft);
+//            if (nts.length == 0){
+//                continue;
+//            }
+
+            long[] chrds = chords.get(rLeft);
+            if(chrds.length ==0){
                 continue;
             }
 
@@ -254,7 +283,7 @@ public class TrainingDatasetCreator {
             double endtime = sc00.getLinearizedTimes()[sc00.getLinearizedTimes().length-1];
 
             //Trainingsinstanz anlegen
-            TrainingInstance ti = new TrainingInstance(nts, transform, uri0, starttime, endtime);
+            TrainingInstance ti = new TrainingInstance(chrds, transform, uri0, starttime, endtime);
             pairs.add(ti);
 
 
