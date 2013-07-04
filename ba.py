@@ -28,7 +28,7 @@ print options
 print "input filename", inputFilename
 print "output filename", outputFilename
 
-##labels = noten
+#labels = noten
 try:
     lfile = open(inputFilename+"/../labels.txt","r")
 except Exception, e:
@@ -39,7 +39,6 @@ labels = []
 for l in lfile:
     ls = l.strip()
     labels.append(ls);
-
 print len(labels)
 print labels
 lfile.close()

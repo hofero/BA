@@ -92,9 +92,13 @@ public class MIDIParser
                 ImmutableSet<Integer> restNotes = Sets.difference(prevChord, Sets.newHashSet(offEvents.get(tick))).immutableCopy();
                 ImmutableSet<Integer> thisChord = Sets.union(restNotes, Sets.newHashSet(onEvents.get(tick))).immutableCopy();;
 
-                long l = NgramCoder.pack( thisChord.toArray(new Integer[thisChord.size()]));
+                long l = parseLabel( thisChord.toArray(new Integer[thisChord.size()]));
+                if (l ==0){
+                    l = parseLabel( prevChord.toArray(new Integer[prevChord.size()]));
+                }
                 chords.putAll(tick, thisChord);
                 chordspacked.put(tick,l);
+
             }
             prevTick = tick;
         }
@@ -221,9 +225,6 @@ public class MIDIParser
     }
 
     public static boolean isLabel(Integer[] chord){
-        for(int aa:chord){
-            System.out.println("chord "+ aa+" ");
-        }
         long l = NgramCoder.pack(chord);
 
         //Labels einlesen
@@ -242,7 +243,6 @@ public class MIDIParser
         }
 
         if(array.contains(l)){
-            System.out.println("arraycontains l. "+ l);
             return true;
         }
         else{
@@ -253,12 +253,8 @@ public class MIDIParser
 
     public static long parseLabel(Integer[] chord) {
         long result = 0;
-
         if(isLabel(chord)){
             result=  NgramCoder.pack(chord);
-            for (int i: chord){
-                System.out.println(i+ " ");
-            }    System.out.println("\n");
         }
         else{
             ArrayList<Integer[]> possibleChords = new ArrayList<Integer[]>();
@@ -286,12 +282,21 @@ public class MIDIParser
                     break;
                 }
             }
-            if (result ==0){
-                parseLabel(possibleChords.get(0));
+            if (result == 0){
+                for (int i = 0; i< possibleChords.size();i++){
+                    if(parseLabel(possibleChords.get(0))!= 0){
+                        return  parseLabel(possibleChords.get(i));
+
+                    }
+                    else {
+                        continue;
+                    }
+}
             }
         }
         return result;
     }
+
 
     public static ArrayList<String> listDir(File dir){
             ArrayList<String> out = new ArrayList<String>();
@@ -320,9 +325,6 @@ public class MIDIParser
             File f = new File(s);
             try {
                 ImmutableMultimap<Double, Long> chords = parseChords(Files.toByteArray(f));
-                for(long l : chords.values()){
-                    System.out.print(l+" ");
-                }
             } catch (Exception e) {
                 e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
             }
