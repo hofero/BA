@@ -12,6 +12,7 @@ from optparse import OptionParser
 inputMean = 0
 inputStd = 1
 
+
 #command line options
 parser = OptionParser()
 
@@ -63,10 +64,11 @@ for f in filenames:
             dims = (len(transform), len(transform[0]))
             print dims
             transcript = data["chords"]
-            for chord in transcript:
-                targetString += str(chord) +" "
+            for chord in transcript :
+                if chord <> "NULL":
+                    targetString += str(chord) +" "
             print targetString
-            targetStrings.append(targetString)
+            targetStrings.append(targetString.strip())
             seqLengths.append(dims[0] * dims[1])
             seqTags.append(fname)
             seqDims.append(dims)
@@ -121,17 +123,20 @@ netcdf_helpers.createNcDim(file, "inputPattSize", len(inputs[0]))
 netcdf_helpers.createNcDim(file,"numDims", 2)
 netcdf_helpers.createNcDim(file,"numLabels", len(labels))
 
+
 #create the variables
 netcdf_helpers.createNcStrings(file, "seqTags", seqTags, ("numSeqs", "maxSeqTagLength"), "sequence tags")
 netcdf_helpers.createNcStrings(file, "labels", labels, ("numLabels", "maxLabelLength"), "labels")
-netcdf_helpers.createNcStrings(file, "targetStrings", targetStrings, ("numSeqs", "maxTargetStringLength"), "target strings")
+netcdf_helpers.createNcStrings(file, "targetStrings", targetStrings, ("numSeqs", "maxTargStringLength"), "target strings")
 netcdf_helpers.createNcVar(file, "seqLengths", seqLengths, "i", ("numSeqs",), "sequence lengths")
 netcdf_helpers.createNcVar(file, "seqDims", seqDims, "i", ("numSeqs","numDims"), "sequence dimensions")
 netcdf_helpers.createNcVar(file, "inputs", inputs, "f", ("numTimesteps","inputPattSize"), "input patterns")
 
+
 #write the data to disk
 print "writing data to", outputFilename
 json_data.close()
+file.close()
 
 
 

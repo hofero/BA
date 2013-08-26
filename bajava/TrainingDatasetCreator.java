@@ -67,11 +67,12 @@ public class TrainingDatasetCreator {
                     e.printStackTrace();
                     continue;
                 }
-                //Fuer jede Zuordnung ein globalAlignment erstellen
+                //Fuer jede Zuordnung ein globalAlignment erstellen (Deserialisierung)
                 GlobalAlignment globalAlignment = new Gson().fromJson(jsonString, GlobalAlignment.class);
                 //[1 local alignments, 1022 points, minConfidence ]
                 System.out.print(globalAlignment.toString());
 
+                //globalAlignment in kleinere Abschnitte (=Trainingspaar) mit (Spektrogramm + Label) zerlegen
                 List<TrainingInstance> localPairs = getTrainingInstanceList(globalAlignment);
                 //alle TrainingPairs in einem Array speichern
                 accumulatePairs(pairs, localPairs);
@@ -142,7 +143,7 @@ public class TrainingDatasetCreator {
 
     }
 
-    //Die GlobalAlignments in kleinere Abschnitte Zerlegen und jeden Abschnitt als Trainingspaar abspeichern
+    //Die GlobalAlignments (MIDI<-->Spektrogramm) in kleinere Abschnitte Zerlegen und jeden Abschnitt als Trainingspaar abspeichern
     public static List<TrainingInstance> getTrainingInstanceList(GlobalAlignment globalAlignment) {
 
         List<TrainingInstance> pairs = new ArrayList<TrainingInstance>();
@@ -150,13 +151,13 @@ public class TrainingDatasetCreator {
 
         //Midi Datei: kdf^albeniz^albeniz_mallorca_(c)yogore.mid
         String uri0 = globalAlignment.getUri0();
-        //Id Audio : KdSj7blufM8
+        //Id Audio : KdSj7blufM8 (Spektrogramm)
         String uri1 = globalAlignment.getUri1();
 
         //audioCQTPaths.put("UYVT_WdDSLI", MIDI_DATA_ROOT + "/cqt/UYVT_WdDSLI.aac_44100-54308-335.dat.gz");
         //audioCQTPaths.put("UYVT_WdDSLI", OUTPUT_PATH + "/small_44100-1500-335.dat.gz");
 
-        //Pfad zu Audio Datei
+        //Audio Datei: Pfad zu Spektrogramm durch Id herausfinden
         String audioDataPath = audioCQTPaths.get(uri1);
 
         if (audioDataPath == null) {
@@ -180,14 +181,15 @@ public class TrainingDatasetCreator {
             return pairs;
         }
 
+        //Midi Datei laden und Steuerinformationen in StreamsContainer speichern
         MidiDatabaseHelper mdh = new MidiDatabaseHelper(MIDI_DATA_ROOT, OUTPUT_PATH);
         StreamsContainer sc0 = new StreamsContainer();
         ImmutableMultimap<Double, Long> midiparser = null;
         try {
             String realUri0 = uri0.substring(4).replace("^", "/");
-            //Midi Datei laden und in StreamsContainer speichern
             sc0 = mdh.loadKDF(realUri0);
             File f = new File(MIDI_DATA_ROOT + "/kdf/"+realUri0);
+            //Herausfinden welche Akkorde zu welchem Zeitpunkt (Akkord,Zeitpunkt) klingen und in midiparser speichern
             midiparser = MIDIParser.parseChords(Files.toByteArray(f));
         } catch (Exception e) {
             e.printStackTrace();
@@ -198,8 +200,8 @@ public class TrainingDatasetCreator {
 
         //Die TimeMaps des globalAlignment durchlaufen und in Abschnitte (30 lang) unterteilen --> in Map umwandeln
         //Zuerst in ga: {...localtimeMaps:[[timeMap[0]--> wird zu Key][timeMap[1]--> wird zu Value],...]}
-        //Key = Zeit, Value = ...
-        int matchLength = 30;
+        //Key = ZeitMIDI, Value = ZeitSpektrogramm
+        int matchLength = 10;
         Map<double[], double[]> ranges = getRanges(globalAlignment, matchLength);
 
 
@@ -211,6 +213,7 @@ public class TrainingDatasetCreator {
 //            notes.put(r, linearized);
 //        }
 
+        //Intervallen aus ranges.keySet()(=ZeitMIDI,bleibt Key) MIDI-Daten aus MidiParser (value) zuordnen --> Akkorde
         Double[] midiparserDoubleArray = midiparser.keys().toArray(new Double[midiparser.size()]);
         TDoubleArrayList midiparserArrayList = new TDoubleArrayList();
         for (int i = 0; i< midiparserDoubleArray.length; i++){
@@ -231,7 +234,7 @@ public class TrainingDatasetCreator {
         }
 
 
-        //Intervallen aus ranges.values() (wird key ) Daten aus Spektrogramm (value) zuordnen --> Frames
+        //Intervallen aus ranges.values() (=ZeitSpektrogramm, wird key ) Daten aus Spektrogramm (value) zuordnen --> Frames
         Map<double[], double[][]> transforms = new HashMap<double[], double[][]>();
         for (double[] r : ranges.values()) {
             int start = (int) (r[0] * sampleRate / 256);
@@ -247,7 +250,7 @@ public class TrainingDatasetCreator {
         cs.setPenalty(0.2);
         cs.setMatchingPolicy(CommonSubsequenceFinder.MatchingPolicy.UPPER_SEMITONE);
 
-
+        //Zuordnungen ( Zeit MIDI <--> Zeit Spektrogramm  ) durchlaufen und für jeweilige Zeit (Akkorde, Spektrogramm) als Trainingspaar abspeichern
         for (double[] rLeft : ranges.keySet()) {
             double[] rRight = ranges.get(rLeft);
 
@@ -257,17 +260,18 @@ public class TrainingDatasetCreator {
 //                continue;
 //            }
 
+            //Akkorde in dem Zeitintervall
             long[] chrds = chords.get(rLeft);
             if(chrds.length ==0){
                 continue;
             }
 
-            double[][] transform = transforms.get(rRight);
 
+            //Spektrogramm in dem Zeitintervall --> Positionen der Top 10 hoechsten Werte
+            double[][] transform = transforms.get(rRight);
             if (transform == null) {
                 continue;
             }
-
             for (int i=0; i<transform.length; i++){
                 double[] peaks = sortPeaks(transform[i]);
                  transform[i]= peaks;
@@ -285,7 +289,6 @@ public class TrainingDatasetCreator {
             //Trainingsinstanz anlegen
             TrainingInstance ti = new TrainingInstance(chrds, transform, uri0, starttime, endtime);
             pairs.add(ti);
-
 
             double transformStep = 1d / ComputeCQT.TARGET_FRAME_RATE * 256;
 
@@ -337,6 +340,7 @@ public class TrainingDatasetCreator {
         return ranges;
     }
 
+    //top 10 hoechste Werte aus Spektrogramm absteigend sortieren und Position speichern
     public static double[] sortPeaks(double[] frameData) {
         List<Integer> peaks;
         //Ordnet Peaks aufsteigend nach Groesse --> map < peak,indices>
@@ -345,9 +349,10 @@ public class TrainingDatasetCreator {
             map.put(frameData[i], i);
         }
         Collection<Integer> indices = map.values();
-        //10 hoechste auswaehlen
-        if(indices.size()>10){
-            peaks = Lists.reverse(Lists.newArrayList(indices).subList(indices.size() - 10, indices.size()));
+        //n hoechste auswaehlen
+        int n = 100;
+        if(indices.size()> n){
+            peaks = Lists.reverse(Lists.newArrayList(indices).subList(indices.size() - n, indices.size()));
         }
         else{
             peaks = Lists.reverse(Lists.newArrayList(indices));
